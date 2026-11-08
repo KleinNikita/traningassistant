@@ -27,12 +27,23 @@ function previous(e,n) {
   }
 }
 let previewDay = null;
+function dayPicker(days, id, activeSession=false) {
+  return '<section class="choose-day"><h2>Выбери тренировочный день</h2><div class="day-picker">'+days.map((d,i)=>
+    '<button data-action="'+(activeSession?'switchday-':'day-')+i+'" aria-pressed="'+(d.id===id)+'">'+escape(d.name)+'</button>'
+  ).join('')+'</div></section>';
+}
+function workoutFor(s, plan, index) {
+  const day=plan.plan.days[index];
+  const saved=(s.pausedDays||[]).find(a=>(a.planId??originalPlanId)===plan.id && a.day.id===day.id);
+  if(saved){s.pausedDays=s.pausedDays.filter(a=>a!==saved);return saved;}
+  return {planId:plan.id,day:structuredClone(day),version:plan.plan.version,index:0,set:0,log:[],until:0,draft:null};
+}
 function overview() {
   const selected = selectedPlan(state);
   const days = selected.plan.days;
   const nextIndex = (days.findIndex(d => d.id === state.history.at(-1)?.day.id) + 1) % days.length;
   const chosen = days.find(d=>d.id===previewDay) || days[nextIndex];
-  const picker = '<div class="day-picker">'+days.map((d,i)=>'<button data-action="day-'+i+'" aria-pressed="'+(d===chosen)+'">'+escape(d.name)+'</button>').join('')+'</div>';
+  const picker = dayPicker(days,chosen.id);
   return '<h1>'+escape(selected.name)+'</h1>' + picker + [chosen].map((day, position) => {
     const total = day.exercises.reduce((sum, e) => sum + e.count, 0);
     const items = day.exercises.map(e => '<li><b>' + escape(e.name) + '</b><small>' + escape(e.sets) + '</small></li>').join('');
@@ -40,7 +51,7 @@ function overview() {
     return `<article class="day ${position === 0 ? 'featured' : ''}">
       <div class="day-head"><small>${title}</small><h2>${escape(day.name)}</h2><p>${total} подх. · ${day.exercises.length} упр.</p></div>
       <details open><summary>Состав тренировки</summary><ol>${items}</ol></details>
-      ${button('Начать ' + day.name, 'start-' + days.indexOf(day), position === 0 ? 'primary arrow' : 'secondary arrow')}
+      ${button(((state.pausedDays||[]).some(a=>(a.planId??originalPlanId)===selected.id && a.day.id===day.id)?'Продолжить ':'Начать ') + day.name, 'start-' + days.indexOf(day), 'primary arrow')}
     </article>`;
   }).join('');
 }
@@ -163,7 +174,9 @@ function active() {
   const a=state.active, e=a.day.exercises[a.index];
   const total=a.day.exercises.reduce((n,ex)=>n+ex.count,0);
   const rest=a.until>Date.now()?'<article class="rest"><small>Отдых <b id="remaining"></b></small>'+button('Пропустить','rest')+'</article>':'';
-  const progress='<div class="session-meta"><b>'+escape(a.day.name)+'</b><small>'+a.log.length+' / '+total+' подх.</small></div>'+
+  const sessionPlan=catalog(state).find(p=>p.id===(a.planId??originalPlanId));
+  const picker=sessionPlan?dayPicker(sessionPlan.plan.days,a.day.id,true):'';
+  const progress=picker+'<div class="session-meta"><b>'+escape(a.day.name)+'</b><small>'+a.log.length+' / '+total+' подх.</small></div>'+
     '<progress aria-label="Записанные подходы" value="'+a.log.length+'" max="'+total+'"></progress>'+rest;
   if(!e)return progress+exerciseList(a)+recent(a)+'<h1>Готово</h1>'+button('Сохранить тренировку','finish','primary');
   const old=previous(e,a.set), last=a.log.filter(s=>s.id===e.id).at(-1);
@@ -242,6 +255,13 @@ view.addEventListener('click',event=>{
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
   if(action.startsWith('day-')){previewDay=selectedPlan(state).plan.days[Number(action.slice(4))].id;render();return;}
+  if(action.startsWith('switchday-'))return commit(s=>{
+    const plan=catalog(s).find(p=>p.id===(s.active.planId??originalPlanId));
+    const index=Number(action.slice(10));
+    if(plan.plan.days[index].id===s.active.day.id)return;
+    (s.pausedDays??=[]).push(s.active);
+    s.active=workoutFor(s,plan,index);
+  });
   if(action==='new-plan')return openPlanEditor();
   if(action.startsWith('modify:'))return openPlanEditor(state.customPlans.find(p=>p.id===action.slice(7)));
   if(action.startsWith('use:')) return commit(s=>{s.selectedId=action.slice(4);});
@@ -269,7 +289,7 @@ view.addEventListener('click',event=>{
   if(action.startsWith('start-'))return commit(s=>{
     const selected=selectedPlan(s);
     previewDay=null;
-    s.active={planId:selected.id,day:structuredClone(selected.plan.days[Number(action.slice(6))]),version:selected.plan.version,index:0,set:0,log:[],until:0,draft:null};
+    s.active=workoutFor(s,selected,Number(action.slice(6)));
   });
   if(action.startsWith('pick-')) return commit(s=>{
     const a=s.active, index=Number(action.slice(5));
