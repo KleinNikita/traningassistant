@@ -16,7 +16,7 @@ function commit(edit) {
 function button(text, action, cls = '') {
   return '<button type="button" class="'+cls+'" data-action="'+action+'">'+escape(text)+'</button>';
 }
-function unit(e) { return e.sets.includes('секунд') ? 'Секунды' : 'Повторы'; }
+function unit(e) { return /сек|\d\s*с(?:\s|$)/i.test(e.sets) ? 'Секунды' : 'Повторы'; }
 function format(s,e) {
   return (s.weight !== null ? s.weight+' кг × ' : '')+s.reps+(unit(e)==='Секунды'?' с':' повт.');
 }
@@ -26,14 +26,17 @@ function previous(e,n) {
     if (entries.length) return entries[n] || entries.at(-1);
   }
 }
+let previewDay = null;
 function overview() {
-  const days = state.plan.days;
+  const selected = selectedPlan(state);
+  const days = selected.plan.days;
   const nextIndex = (days.findIndex(d => d.id === state.history.at(-1)?.day.id) + 1) % days.length;
-  const ordered = [...days.slice(nextIndex), ...days.slice(0, nextIndex)];
-  return '<h1>Мой план</h1>' + ordered.map((day, position) => {
+  const chosen = days.find(d=>d.id===previewDay) || days[nextIndex];
+  const picker = '<div class="day-picker">'+days.map((d,i)=>'<button data-action="day-'+i+'" aria-pressed="'+(d===chosen)+'">'+escape(d.name)+'</button>').join('')+'</div>';
+  return '<h1>'+escape(selected.name)+'</h1>' + picker + [chosen].map((day, position) => {
     const total = day.exercises.reduce((sum, e) => sum + e.count, 0);
     const items = day.exercises.map(e => '<li><b>' + escape(e.name) + '</b><small>' + escape(e.sets) + '</small></li>').join('');
-    const title = position === 0 ? 'Следующая тренировка' : 'Также в программе';
+    const title = day===days[nextIndex] ? 'Следующая тренировка' : 'Выбранный день';
     return `<article class="day ${position === 0 ? 'featured' : ''}">
       <div class="day-head"><small>${title}</small><h2>${escape(day.name)}</h2><p>${total} подх. · ${day.exercises.length} упр.</p></div>
       <details open><summary>Состав тренировки</summary><ol>${items}</ol></details>
@@ -126,7 +129,7 @@ function editSets(index, historyIndex = -1) {
 function replaceToday() {
   const a=state.active, original=a.day.exercises[a.index];
   const dialog=showDialog('Заменить сегодня','<form><label>Новое упражнение<input name="name" required maxlength="80" placeholder="Например, тяга блока" list="choices"></label><datalist id="choices">'+
-    state.plan.days.flatMap(day=>day.exercises).map(e=>'<option value="'+escape(e.name)+'">').join('')+'</datalist><p>Оставшиеся подходы: '+(original.count-a.set)+'. Уже записанные сохранятся.</p><button class="primary">Заменить</button></form>');
+    selectedPlan(state).plan.days.flatMap(day=>day.exercises).map(e=>'<option value="'+escape(e.name)+'">').join('')+'</datalist><p>Оставшиеся подходы: '+(original.count-a.set)+'. Уже записанные сохранятся.</p><button class="primary">Заменить</button></form>');
   dialog.querySelector('form').onsubmit=event=>{
     event.preventDefault();
     const field=event.target.elements.name;
@@ -135,7 +138,7 @@ function replaceToday() {
       field.setCustomValidity('Введи другое упражнение, которого ещё нет в этой тренировке.');
       field.reportValidity();field.oninput=()=>field.setCustomValidity('');return;
     }
-    const known=state.plan.days.flatMap(d=>d.exercises).find(e=>e.name.toLowerCase()===name.toLowerCase());
+    const known=selectedPlan(state).plan.days.flatMap(d=>d.exercises).find(e=>e.name.toLowerCase()===name.toLowerCase());
     const count=original.count-a.set;
     const ex={...original,name,id:known?.id??'custom:'+name.toLowerCase(),count,
       sets:original.sets.replace(/^\d+/,String(count)),note:'Замена сегодня · '+original.name,
@@ -188,8 +191,8 @@ function history() {
 }
 
 function render(){
-  for(const tab of ['train','journal']) byId(tab).setAttribute('aria-pressed',page===tab);
-  view.innerHTML=page==='journal'?history():state.active?active():overview();
+  for(const tab of ['train','plans','journal']) byId(tab).setAttribute('aria-pressed',page===tab);
+  view.innerHTML=page==='plans'?plansView():page==='journal'?history():state.active?active():overview();
   tick();
 }
 function tick(){
@@ -238,6 +241,10 @@ view.addEventListener('click',event=>{
   }
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
+  if(action.startsWith('day-')){previewDay=selectedPlan(state).plan.days[Number(action.slice(4))].id;render();return;}
+  if(action==='new-plan')return openPlanEditor();
+  if(action.startsWith('modify:'))return openPlanEditor(state.customPlans.find(p=>p.id===action.slice(7)));
+  if(action.startsWith('use:')) return commit(s=>{s.selectedId=action.slice(4);});
   if(action==='previous')return commit(s=>{
     const a=s.active, ex=a.day.exercises[a.index], old=previous(ex,a.set);
     if(!old)return;
@@ -260,7 +267,9 @@ view.addEventListener('click',event=>{
   if(action==='replace'){replaceToday();return;}
   if(action==='train'){page='train';render();return;}
   if(action.startsWith('start-'))return commit(s=>{
-    s.active={day:structuredClone(s.plan.days[Number(action.slice(6))]),version:s.plan.version,index:0,set:0,log:[],until:0,draft:null};
+    const selected=selectedPlan(s);
+    previewDay=null;
+    s.active={planId:selected.id,day:structuredClone(selected.plan.days[Number(action.slice(6))]),version:selected.plan.version,index:0,set:0,log:[],until:0,draft:null};
   });
   if(action.startsWith('pick-')) return commit(s=>{
     const a=s.active, index=Number(action.slice(5));
@@ -292,8 +301,8 @@ view.addEventListener('change',async event=>{
   if(event.target.id!=='backup' || !event.target.files.length)return;
   try{
     const {schema,data}=JSON.parse(await event.target.files[0].text());
-    if(schema!==1 || !validPlan(data?.plan) || !Array.isArray(data.history) || !data.history.every(s=>validSession(s)&&Number.isFinite(s.finished)) || (data.active!==null && !validSession(data.active)))throw Error();
-    if(confirm('Заменить текущий журнал и активную тренировку данными из копии?') && save({...data,plan:state.plan}))render();
+    if(schema!==1 || !validPlan(data?.plan) || !validLibrary(data) || !Array.isArray(data.history) || !data.history.every(s=>validSession(s)&&Number.isFinite(s.finished)) || (data.active!==null && !validSession(data.active)))throw Error();
+    if(confirm('Восстановить журнал, тренировку и сохранённые планы из копии?') && save({...data,plan:state.plan,customPlans:data.customPlans??state.customPlans??[],selectedId:data.selectedId??(data.customPlans?originalPlanId:state.selectedId)}))render();
   }catch{byId('notice').textContent='Не удалось прочитать резервную копию приложения «TraningAssistant».';}
 });
 async function init(){
@@ -312,7 +321,7 @@ async function init(){
     }
   }catch{if(!state.plan)throw Error();}
   render();
-  for(const tab of ['train','journal'])byId(tab).onclick=()=>{page=tab;render();};
+  for(const tab of ['train','plans','journal'])byId(tab).onclick=()=>{page=tab;render();};
   setInterval(tick,500);
   if('serviceWorker' in navigator){
     try{await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;byId('offline').textContent='Готово к офлайн';}
@@ -320,6 +329,8 @@ async function init(){
   }
 }
 init().catch(()=>{view.textContent='Не удалось открыть план. Проверь соединение и доступ к хранилищу браузера, затем обнови страницу.';});
+
+
 
 
 
