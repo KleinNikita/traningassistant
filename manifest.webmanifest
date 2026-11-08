@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "V-Shape · Тренировки",
-  "short_name": "V-Shape",
+  "name": "Подход · Тренировки",
+  "short_name": "Подход",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",
@@ -21,3 +21,4 @@
     }
   ]
 }
+

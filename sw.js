@@ -1,8 +1,8 @@
 const prefix = 'vshape-' + new URL(self.registration.scope).pathname + '-';
-const name = prefix + '1';
+const name = prefix + '2';
 const assets = ['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./plan.json','./icon-192.png','./icon-512.png'];
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(name).then(cache => cache.addAll(assets)).then(()=>self.skipWaiting()));
+  event.waitUntil(caches.open(name).then(cache => cache.addAll(assets.map(path => new Request(path, {cache: "reload"})))).then(()=>self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k.startsWith(prefix) && k!==name).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
@@ -24,3 +24,4 @@ self.addEventListener('fetch', event => {
     return fetch(event.request);
   })());
 });
+
