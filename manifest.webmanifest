@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Подход · Тренировки",
-  "short_name": "Подход",
+  "name": "TraningAssistant · Тренировки",
+  "short_name": "TraningAssistant",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",

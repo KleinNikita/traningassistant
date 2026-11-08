@@ -14,7 +14,7 @@ function commit(edit) {
   if (save(next)) render();
 }
 function button(text, action, cls = '') {
-  return '<button class="'+cls+'" data-action="'+action+'">'+escape(text)+'</button>';
+  return '<button type="button" class="'+cls+'" data-action="'+action+'">'+escape(text)+'</button>';
 }
 function unit(e) { return e.sets.includes('секунд') ? 'Секунды' : 'Повторы'; }
 function format(s,e) {
@@ -80,38 +80,106 @@ function exerciseList(a) {
     const count = logged(a,e), done = count >= e.count;
     const current = i === a.index;
     const status = done ? '✓' : skippedIds.includes(e.id) ? '↷' : String(i+1).padStart(2,'0');
-    return `<button class="exercise-row" data-action="pick-${i}" aria-pressed="${current}" ${done ? 'disabled' : ''}>
-      <span class="serial">${status}</span><span>${escape(e.name)}</span><span class="set-count">${count}/${e.count}</span></button>`;
+    return `<div class="roster-line"><button class="exercise-row" data-action="${done ? 'edit' : 'pick'}-${i}" aria-pressed="${current}">
+      <span class="serial">${status}</span><span>${escape(e.name)}</span></button><button class="set-count" data-action="${count?'edit':'pick'}-${i}" aria-label="Подходы: ${escape(e.name)}">${count}/${e.count}</button></div>`;
   });
   return '<div class="roster" aria-label="Упражнения тренировки">'+rows.join('')+'</div>';
 }
+function recent(a) {
+  const set = a.log.at(-1);
+  if (!set || !a.undoable) return '';
+  const ex = a.day.exercises.find(e=>e.id===set.id);
+  return '<div class="receipt"><small>Записано: '+escape(ex.name)+' · '+escape(format(set,ex))+'</small>'+button('Отменить','undo')+'</div>';
+}
+function showDialog(title, html) {
+  const dialog = document.createElement('dialog');
+  dialog.innerHTML = '<header><h2>'+escape(title)+'</h2><button aria-label="Закрыть">×</button></header>'+html;
+  document.body.append(dialog);
+  dialog.querySelector('header button').onclick=()=>dialog.close();
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.showModal();
+  return dialog;
+}
+function editSets(index, historyIndex = -1) {
+  const session = historyIndex<0 ? state.active : state.history[historyIndex];
+  const ex = session.day.exercises[index];
+  const rows = session.log.map((set,i)=>{
+    if(set.id!==ex.id)return '';
+    return '<div class="edit-set" data-index="'+i+'"><label>'+unit(ex)+'<input name="reps" required type="number" min="1" step="1" value="'+set.reps+'"></label>'+
+      (ex.weightLabel?'<label>Вес, кг<input name="kg" type="number" min="0" step="any" value="'+(set.weight??'')+'"></label>':'')+'</div>';
+  }).join('');
+  const dialog=showDialog(ex.name,'<form>'+rows+'<button class="primary">Сохранить исправления</button></form>');
+  dialog.querySelector('form').onsubmit=event=>{
+    event.preventDefault();
+    commit(next=>{
+      const target=historyIndex<0?next.active:next.history[historyIndex];
+      for(const row of dialog.querySelectorAll('[data-index]')){
+        const set=target.log[Number(row.dataset.index)];
+        set.reps=row.querySelector('[name=reps]').valueAsNumber;
+        const kg=row.querySelector('[name=kg]')?.valueAsNumber;
+        set.weight=Number.isFinite(kg)?kg:null;
+      }
+    });
+    dialog.close();
+  };
+}
+function replaceToday() {
+  const a=state.active, original=a.day.exercises[a.index];
+  const dialog=showDialog('Заменить сегодня','<form><label>Новое упражнение<input name="name" required maxlength="80" placeholder="Например, тяга блока" list="choices"></label><datalist id="choices">'+
+    state.plan.days.flatMap(day=>day.exercises).map(e=>'<option value="'+escape(e.name)+'">').join('')+'</datalist><p>Оставшиеся подходы: '+(original.count-a.set)+'. Уже записанные сохранятся.</p><button class="primary">Заменить</button></form>');
+  dialog.querySelector('form').onsubmit=event=>{
+    event.preventDefault();
+    const field=event.target.elements.name;
+    const name=field.value.trim();
+    if(!name || a.day.exercises.some(e=>e.name.toLowerCase()===name.toLowerCase())){
+      field.setCustomValidity('Введи другое упражнение, которого ещё нет в этой тренировке.');
+      field.reportValidity();field.oninput=()=>field.setCustomValidity('');return;
+    }
+    const known=state.plan.days.flatMap(d=>d.exercises).find(e=>e.name.toLowerCase()===name.toLowerCase());
+    const count=original.count-a.set;
+    const ex={...original,name,id:known?.id??'custom:'+name.toLowerCase(),count,
+      sets:original.sets.replace(/^\d+/,String(count)),note:'Замена сегодня · '+original.name,
+      weightLabel:known?.weightLabel??'Рабочий вес'};
+    commit(s=>{
+      const session=s.active;
+      session.skipped=skipped(session);
+      let index=session.index;
+      if(session.set){
+        const completed=session.set;
+        session.day.exercises[index]={...original,count:completed,sets:original.sets.replace(/^\d+/,String(completed))};
+        index++;
+        session.day.exercises.splice(index,0,ex);
+      }else session.day.exercises[index]=ex;
+      session.undoable=false;
+      selectExercise(session,index);
+    });
+    dialog.close();
+  };
+}
 function active() {
-  const a = state.active, e = a.day.exercises[a.index];
-  const total = a.day.exercises.reduce((sum, ex) => sum + ex.count, 0);
-  const progress = `<div class="session-meta"><b>${escape(a.day.name)}</b><small>${a.log.length} / ${total} подх.</small></div>
-    <progress aria-label="Записанные подходы" value="${a.log.length}" max="${total}"></progress>`;
-  if (!e) return progress + exerciseList(a) + '<h1>Готово</h1>' + button('Сохранить тренировку', 'finish', 'primary');
-  const old = previous(e, a.set);
-  const last = a.log.filter(s => s.id === e.id).at(-1);
-  const reps = a.draft?.reps ?? last?.reps ?? old?.reps ?? Number(e.sets.match(/×\s*(\d+)/)?.[1] || 1);
-  const weight = a.draft?.weight ?? last?.weight ?? old?.weight ?? '';
-  const rest = a.until > Date.now() ? `<article class="rest"><div><small>Отдых</small><strong id="remaining"></strong></div>${button('Пропустить', 'rest')}</article>` : '';
-  return `${progress}${exerciseList(a)}<section class="exercise"><small>Упражнение ${a.index+1} из ${a.day.exercises.length}</small>
-    <h1>${escape(e.name)}</h1><strong>${escape(e.sets)}</strong><p>${escape(e.note)}</p></section>
-    ${rest}<form id="entry"><div class="session-meta"><h2>Подход ${a.set+1} из ${e.count}</h2></div>
-    ${old ? '<p class="previous">В прошлый раз · <b>'+escape(format(old,e))+'</b></p>' : ''}
-    ${e.weightLabel ? counter('weight', e.weightLabel+' · кг', weight, 0, 2.5) : ''}
-    ${counter('reps', unit(e), reps, 1, 1)}
-    <button class="primary">✓ &nbsp; Записать подход</button></form>
-    <div class="actions">${button('Пропустить упражнение','skip')}${button('Завершить раньше','early')}</div>`;
+  const a=state.active, e=a.day.exercises[a.index];
+  const total=a.day.exercises.reduce((n,ex)=>n+ex.count,0);
+  const rest=a.until>Date.now()?'<article class="rest"><small>Отдых <b id="remaining"></b></small>'+button('Пропустить','rest')+'</article>':'';
+  const progress='<div class="session-meta"><b>'+escape(a.day.name)+'</b><small>'+a.log.length+' / '+total+' подх.</small></div>'+
+    '<progress aria-label="Записанные подходы" value="'+a.log.length+'" max="'+total+'"></progress>'+rest;
+  if(!e)return progress+exerciseList(a)+recent(a)+'<h1>Готово</h1>'+button('Сохранить тренировку','finish','primary');
+  const old=previous(e,a.set), last=a.log.filter(s=>s.id===e.id).at(-1);
+  const reps=a.draft?.reps??last?.reps??old?.reps??Number(e.sets.match(/×\s*(\d+)/)?.[1]??1);
+  const weight=a.draft?.weight??last?.weight??old?.weight??'';
+  return progress+exerciseList(a)+recent(a)+'<div class="actions">'+button('Заменить сегодня','replace')+button('Пропустить упражнение','skip')+button('Завершить','early')+'</div>'+
+    '<p class="hint">'+escape(e.sets)+' · '+escape(e.note)+'</p>'+
+    '<form id="entry" class="dock"><div class="session-meta"><strong>'+escape(e.name)+'</strong><small>'+ (a.set+1)+'/'+e.count+'</small></div>'+
+    (old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+' ↙</button>':'')+
+    '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+' · кг',weight,0,2.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
+    '<button class="primary">✓ Записать подход</button></form>';
 }
 function history() {
   const sessions = [...state.history].reverse();
-  const rows = sessions.map(a => {
+  const rows = sessions.map((a,rev) => {
     const date = new Date(a.finished).toLocaleDateString('ru-RU',{day:'numeric',month:'short', year:'numeric'});
-    const exercises = a.day.exercises.map(e => {
+    const exercises = a.day.exercises.map((e,index) => {
       const sets = a.log.filter(s => s.id === e.id);
-      return sets.length ? '<li><b>'+escape(e.name)+'</b><small>'+sets.map(s=>escape(format(s,e))).join(' / ')+'</small></li>' : '';
+      return sets.length ? '<li><b>'+escape(e.name)+'</b><small>'+sets.map(s=>escape(format(s,e))).join(' / ')+'</small>'+button('Исправить','historyedit-'+(sessions.length-1-rev)+'-'+index)+'</li>' : '';
     }).join('');
     return `<details class="record"><summary><small>${date}</small><strong>${escape(a.day.name)}</strong><span>${a.log.length} подх.</span></summary><ul>${exercises}</ul></details>`;
   }).join('');
@@ -152,7 +220,11 @@ view.addEventListener('submit',event=>{
     a.log.push({id:e.id,reps,weight:Number.isFinite(weight)?weight:null});
     a.draft=null;
     if(a.drafts) delete a.drafts[e.id];
-    if(++a.set===e.count) advance(a);
+    a.set++;
+    a.undoable=true;
+    const partner=e.pair && a.day.exercises.findIndex(other=>other.pair===e.pair && other.pairOrder!==e.pairOrder && logged(a,other)<other.count && !a.skipped.includes(other.id));
+    if(Number.isInteger(partner) && partner>=0) selectExercise(a,partner);
+    else if(a.set>=e.count) advance(a);
     a.until=Date.now()+1000*e.restSeconds;
   });
 });
@@ -166,6 +238,26 @@ view.addEventListener('click',event=>{
   }
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
+  if(action==='previous')return commit(s=>{
+    const a=s.active, ex=a.day.exercises[a.index], old=previous(ex,a.set);
+    if(!old)return;
+    a.draft={weight:old.weight??'',reps:old.reps};
+    (a.drafts??={})[ex.id]=a.draft;
+  });
+  if(action==='undo')return commit(s=>{
+    const a=s.active;
+    if(!a.undoable)return;
+    const set=a.log.pop();
+    selectExercise(a,a.day.exercises.findIndex(ex=>ex.id===set.id));
+    a.draft={weight:set.weight??'',reps:set.reps};
+    (a.drafts??={})[set.id]=a.draft;
+    a.until=0;a.undoable=false;
+  });
+  if(action.startsWith('edit-')){editSets(Number(action.slice(5)));return;}
+  if(action.startsWith('historyedit-')){
+    const [,h,i]=action.split('-');editSets(Number(i),Number(h));return;
+  }
+  if(action==='replace'){replaceToday();return;}
   if(action==='train'){page='train';render();return;}
   if(action.startsWith('start-'))return commit(s=>{
     s.active={day:structuredClone(s.plan.days[Number(action.slice(6))]),version:s.plan.version,index:0,set:0,log:[],until:0,draft:null};
@@ -184,7 +276,7 @@ view.addEventListener('click',event=>{
   if(action==='finish' || (action==='early' && confirm('Завершить тренировку и сохранить записанные подходы?')))return commit(finish);
   if(action==='export'){
     const link=document.createElement('a');
-    link.download='podhod-journal.json';
+    link.download='TraningAssistant-journal.json';
     link.href=URL.createObjectURL(new Blob([JSON.stringify({schema:1,data:state})],{type:'application/json'}));
     link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
   }
@@ -202,7 +294,7 @@ view.addEventListener('change',async event=>{
     const {schema,data}=JSON.parse(await event.target.files[0].text());
     if(schema!==1 || !validPlan(data?.plan) || !Array.isArray(data.history) || !data.history.every(s=>validSession(s)&&Number.isFinite(s.finished)) || (data.active!==null && !validSession(data.active)))throw Error();
     if(confirm('Заменить текущий журнал и активную тренировку данными из копии?') && save({...data,plan:state.plan}))render();
-  }catch{byId('notice').textContent='Не удалось прочитать резервную копию приложения «Подход».';}
+  }catch{byId('notice').textContent='Не удалось прочитать резервную копию приложения «TraningAssistant».';}
 });
 async function init(){
   const raw=localStorage.getItem(key);

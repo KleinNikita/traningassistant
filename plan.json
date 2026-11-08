@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "days": [
     {
       "id": "A",
@@ -142,14 +142,28 @@
           "restSeconds": 90
         },
         {
-          "name": "Бицепс EZ + Разгибания трицепс",
-          "sets": "2 × 10–12 каждое",
-          "note": "Суперсет без отдыха между упражнениями",
-          "weightLabel": "Бицепс / Трицепс",
+          "name": "Сгибания с EZ-грифом",
+          "sets": "2 × 10–12 повторов",
+          "note": "Суперсет · затем разгибания на трицепс",
+          "weightLabel": "Рабочий вес",
           "priority": false,
-          "id": "b-7",
+          "id": "ez-curl",
           "count": 2,
-          "restSeconds": 90
+          "restSeconds": 0,
+          "pair": "arms",
+          "pairOrder": 0
+        },
+        {
+          "name": "Разгибания на трицепс",
+          "sets": "2 × 10–12 повторов",
+          "note": "Суперсет · отдых после пары",
+          "weightLabel": "Рабочий вес",
+          "priority": false,
+          "id": "triceps-extension",
+          "count": 2,
+          "restSeconds": 90,
+          "pair": "arms",
+          "pairOrder": 1
         }
       ]
     }

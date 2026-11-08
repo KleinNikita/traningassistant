@@ -1,5 +1,5 @@
 const prefix = 'vshape-' + new URL(self.registration.scope).pathname + '-';
-const name = prefix + '2';
+const name = prefix + '3';
 const assets = ['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./plan.json','./icon-192.png','./icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(name).then(cache => cache.addAll(assets.map(path => new Request(path, {cache: "reload"})))).then(()=>self.skipWaiting()));
