@@ -39,7 +39,11 @@ function exerciseFields(ex={}) {
     '<label>Повторы или время<input required name="target" maxlength="60" value="'+escape(target)+'"></label>'+
     '<label>Отдых, сек<input required type="number" name="rest" min="0" max="3600" value="'+(ex.restSeconds??90)+'"></label></div>'+
     '<label><input type="checkbox" name="weighted" '+(ex.weightLabel!==''?'checked':'')+'> Записывать вес</label>'+
+    '<label>Стартовый вес, кг<input type="number" name="startWeight" min="0" step="any" placeholder="Не задан" value="'+escape(ex.startWeight)+'"></label>'+
     '<button type="button" data-remove>Убрать упражнение</button>';
+  const weighted=box.querySelector('[name=weighted]'), startWeight=box.querySelector('[name=startWeight]');
+  weighted.onchange=()=>{startWeight.disabled=!weighted.checked;startWeight.parentElement.hidden=!weighted.checked;};
+  weighted.onchange();
   box.querySelector('[data-remove]').onclick=()=>{
     if(box.parentElement.children.length>1)box.remove();
     else box.querySelector('[name=exercise]').focus();
@@ -75,7 +79,8 @@ function openPlanEditor(existing) {
         const val=name=>row.querySelector('[name='+name+']').value;
         const count=Number(val('count'));
         return {id:row.dataset.id,name:val('exercise'),count,sets:count+' × '+val('target'),restSeconds:Number(val('rest')),
-          weightLabel:row.querySelector('[name=weighted]').checked?'Рабочий вес':'',note:''};
+          weightLabel:row.querySelector('[name=weighted]').checked?'Рабочий вес':'',
+          startWeight:row.querySelector('[name=weighted]').checked && val('startWeight')!==''?Number(val('startWeight')):null,note:''};
       })
     }))};
     const item={id:existing?.id??crypto.randomUUID(),name:form.elements.title.value,plan};

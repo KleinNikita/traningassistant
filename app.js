@@ -181,12 +181,12 @@ function active() {
   if(!e)return progress+exerciseList(a)+recent(a)+'<h1>Готово</h1>'+button('Сохранить тренировку','finish','primary');
   const old=previous(e,a.set), last=a.log.filter(s=>s.id===e.id).at(-1);
   const reps=a.draft?.reps??last?.reps??old?.reps??Number(e.sets.match(/×\s*(\d+)/)?.[1]??1);
-  const weight=a.draft?.weight??last?.weight??old?.weight??'';
+  const weight=a.draft?.weight??old?.weight??last?.weight??e.startWeight??'';
   return progress+exerciseList(a)+recent(a)+'<div class="actions">'+button('Заменить сегодня','replace')+button('Пропустить упражнение','skip')+button('Завершить','early')+'</div>'+
     '<p class="hint">'+escape(e.sets)+' · '+escape(e.note)+'</p>'+
     '<form id="entry" class="dock"><div class="session-meta"><strong>'+escape(e.name)+'</strong><small>'+ (a.set+1)+'/'+e.count+'</small></div>'+
     (old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+' ↙</button>':'')+
-    '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+' · кг',weight,0,2.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
+    '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+' · кг',weight,0,0.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
     '<button class="primary">✓ Записать подход</button></form>';
 }
 function history() {
@@ -197,10 +197,10 @@ function history() {
       const sets = a.log.filter(s => s.id === e.id);
       return sets.length ? '<li><b>'+escape(e.name)+'</b><small>'+sets.map(s=>escape(format(s,e))).join(' / ')+'</small>'+button('Исправить','historyedit-'+(sessions.length-1-rev)+'-'+index)+'</li>' : '';
     }).join('');
-    return `<details class="record"><summary><small>${date}</small><strong>${escape(a.day.name)}</strong><span>${a.log.length} подх.</span></summary><ul>${exercises}</ul></details>`;
+    return `<details class="record"><summary><small>${date}</small><strong>${escape(a.day.name)}</strong><span>${a.log.length} подх.</span></summary><ul>${exercises}</ul>${button('Удалить тренировку','delete-session-'+(sessions.length-1-rev))}</details>`;
   }).join('');
   const empty = '<article class="empty"><h2>Пока нет тренировок</h2><p>Заверши занятие, и здесь появятся упражнения, веса и повторы.</p>'+button(state.active?'Вернуться к тренировке':'Выбрать тренировку','train')+'</article>';
-  return '<h1>Журнал</h1>'+(rows || empty)+'<details class="backup"><summary>Резервная копия</summary><div class="actions">'+button('Скачать копию','export')+button('Восстановить','restore')+'</div></details><input id="backup" type="file" accept=".json" hidden>';
+  return '<h1>Журнал</h1>'+(rows || empty)+'<details class="backup"><summary>Резервная копия</summary><div class="actions">'+button('Скачать копию','export')+button('Восстановить','restore')+'</div></details>'+(sessions.length?button('Очистить журнал','clear-history'):'')+'<input id="backup" type="file" accept=".json" hidden>';
 }
 
 function render(){
@@ -254,6 +254,16 @@ view.addEventListener('click',event=>{
   }
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
+  if(action==='clear-history'){
+    if(confirm('Удалить все завершённые тренировки ('+state.history.length+')? Вернуть их можно только из резервной копии.'))commit(s=>{s.history=[];});
+    return;
+  }
+  if(action.startsWith('delete-session-')){
+    const index=Number(action.slice('delete-session-'.length));
+    const session=state.history[index];
+    if(session && confirm('Удалить тренировку «'+session.day.name+'» от '+new Date(session.finished).toLocaleDateString('ru-RU')+'?'))commit(s=>{s.history.splice(index,1);});
+    return;
+  }
   if(action.startsWith('day-')){previewDay=selectedPlan(state).plan.days[Number(action.slice(4))].id;render();return;}
   if(action.startsWith('switchday-'))return commit(s=>{
     const plan=catalog(s).find(p=>p.id===(s.active.planId??originalPlanId));
