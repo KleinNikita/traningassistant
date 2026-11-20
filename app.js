@@ -11,7 +11,16 @@ function save(next) {
 function commit(edit) {
   const next = structuredClone(state);
   edit(next);
-  if (save(next)) render();
+  if (!save(next)) return false;
+  render();
+  return true;
+}
+let feedbackTimer;
+function showSaved(message) {
+  const feedback = byId('save-feedback');
+  clearTimeout(feedbackTimer);
+  feedback.replaceChildren(document.createTextNode(message));
+  feedbackTimer = setTimeout(() => feedback.replaceChildren(), 3500);
 }
 function button(text, action, cls = '') {
   return '<button type="button" class="'+cls+'" data-action="'+action+'">'+escape(text)+'</button>';
@@ -194,7 +203,7 @@ function active() {
     '<form id="entry" class="dock"><div class="session-meta"><strong>'+escape(e.name)+'</strong><small>'+ (a.set+1)+'/'+e.count+'</small></div>'+
     rest+(old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+'</button>':'')+
     '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+', кг',weight,0,0.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
-    '<button class="primary">Записать подход</button></form>';
+    button('Записать подход','save-set','primary')+'</form>';
 }
 function history() {
   const sessions = [...state.history].reverse();
@@ -245,12 +254,22 @@ view.addEventListener('input',event=>{
   save(next);
 });
 view.addEventListener('submit',event=>{
+  if(event.target.id==='entry')event.preventDefault();
+});
+view.addEventListener('keydown',event=>{
+  if(event.key!=='Enter' || event.isComposing || !event.target.matches('#entry input'))return;
   event.preventDefault();
+  event.target.blur();
+});
+function recordSet() {
+  if(!byId('entry').reportValidity())return;
   const reps=byId('reps').valueAsNumber, weight=byId('weight')?.valueAsNumber;
-  commit(next=>{
+  const exercise=state.active.day.exercises[state.active.index];
+  const set={id:exercise.id,reps,weight:Number.isFinite(weight)?weight:null};
+  const saved=commit(next=>{
     const a=next.active, e=a.day.exercises[a.index];
     a.skipped ??= skipped(a);
-    a.log.push({id:e.id,reps,weight:Number.isFinite(weight)?weight:null});
+    a.log.push(set);
     a.draft=null;
     if(a.drafts) delete a.drafts[e.id];
     a.set++;
@@ -261,7 +280,8 @@ view.addEventListener('submit',event=>{
     a.until=Date.now()+1000*e.restSeconds;
     a.restPaused=0;
   });
-});
+  if(saved)showSaved('Подход записан: '+format(set,exercise));
+}
 view.addEventListener('click',event=>{
   const adjust = event.target.closest('[data-adjust]');
   if (adjust) {
@@ -272,6 +292,7 @@ view.addEventListener('click',event=>{
   }
   const action=event.target.closest('[data-action]')?.dataset.action;
   if(!action)return;
+  if(action==='save-set')return recordSet();
   if(action==='clear-history'){
     if(confirm('Удалить все завершённые тренировки ('+state.history.length+')? Вернуть их можно только из резервной копии.'))commit(s=>{s.history=[];});
     return;
@@ -335,7 +356,11 @@ view.addEventListener('click',event=>{
     else{a.restPaused=Math.max(0,a.until-Date.now());a.until=0;}
   });
   if(action==='skip' && confirm('Пропустить оставшиеся подходы этого упражнения?'))return commit(s=>{const a=s.active; a.skipped=[...skipped(a),a.day.exercises[a.index].id]; advance(a); a.until=0;a.restPaused=0;});
-  if(action==='finish' || (action==='early' && confirm('Завершить тренировку и сохранить записанные подходы?')))return commit(finish);
+  if(action==='finish' || (action==='early' && confirm('Завершить тренировку и сохранить записанные подходы?'))){
+    const count=state.active.log.length;
+    if(commit(finish))showSaved(count?'Тренировка сохранена в журнале ('+count+' подх.)':'Тренировка завершена без подходов');
+    return;
+  }
   if(action==='export'){
     const link=document.createElement('a');
     link.download='TraningAssistant-journal.json';
