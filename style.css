@@ -2,18 +2,18 @@
 /* Critique: Keep every training input above the tab bar and let the exercise list scroll independently. */
 :root {
   color-scheme: dark;
-  --color-bg: #1F2937;
-  --color-surface: #313742;
-  --color-raised: #37414F;
-  --color-selected: #293447;
-  --color-text: #F8FAFC;
-  --color-muted: #CBD5E1;
-  --color-control-border: #8495AA;
-  --color-divider: #465266;
-  --color-accent: #F97316;
-  --color-accent-light: #FB923C;
-  --color-accent-ink: #0F172A;
-  --color-focus: #FB923C;
+  --color-bg: #14181C;
+  --color-surface: #242C34;
+  --color-raised: #242C34;
+  --color-selected: #202B37;
+  --color-text: #F2F7FB;
+  --color-muted: #C4D2DE;
+  --color-control-border: #8294A6;
+  --color-divider: #394650;
+  --color-accent: #A6D9FF;
+  --color-accent-light: #BCE3FF;
+  --color-accent-ink: #14202A;
+  --color-focus: #BCE3FF;
   --color-success: #22C55E;
   --color-danger: #FFAAA6;
   --color-scrim: rgb(0 0 0 / 72%);
