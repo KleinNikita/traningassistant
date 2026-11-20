@@ -37,8 +37,7 @@ function exerciseFields(ex={}) {
   const target=ex.sets?.split(' × ')[1] || '8–12';
   box.innerHTML='<label>Упражнение<input required name="exercise" maxlength="100" placeholder="Например, жим гантелей" value="'+escape(ex.name)+'"></label>'+
     '<div class="builder-grid"><label>Подходы<input required type="number" name="count" min="1" max="99" value="'+(ex.count??3)+'"></label>'+
-    '<label>Повторы или время<input required name="target" maxlength="60" value="'+escape(target)+'"></label>'+
-    '<label>Отдых, сек<input required type="number" name="rest" min="0" max="3600" value="'+(ex.restSeconds??90)+'"></label></div>'+
+    '<label>Повторы или время<input required name="target" maxlength="60" value="'+escape(target)+'"></label></div>'+
     '<label><input type="checkbox" name="weighted" '+(ex.weightLabel!==''?'checked':'')+'> Записывать вес</label>'+
     '<label>Стартовый вес, кг<input type="number" name="startWeight" min="0" step="any" placeholder="Не задан" value="'+escape(ex.startWeight)+'"></label>'+
     '<button type="button" data-remove>Убрать упражнение</button>';
@@ -86,7 +85,7 @@ function openPlanEditor(existing) {
       exercises:Array.from(box.querySelectorAll('.builder-ex'),row=>{
         const val=name=>row.querySelector('[name='+name+']').value;
         const count=Number(val('count'));
-        return {id:row.dataset.id,name:val('exercise'),count,sets:count+' × '+val('target'),restSeconds:Number(val('rest')),
+        return {id:row.dataset.id,name:val('exercise'),count,sets:count+' × '+val('target'),restSeconds:0,
           weightLabel:row.querySelector('[name=weighted]').checked?'Рабочий вес':'',
           startWeight:row.querySelector('[name=weighted]').checked && val('startWeight')!==''?Number(val('startWeight')):null,note:''};
       })

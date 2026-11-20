@@ -51,7 +51,7 @@ function workoutFor(s, plan, index) {
   const day=plan.plan.days[index];
   const saved=(s.pausedDays||[]).find(a=>(a.planId??originalPlanId)===plan.id && a.day.id===day.id);
   if(saved){s.pausedDays=s.pausedDays.filter(a=>a!==saved);return saved;}
-  return {planId:plan.id,day:structuredClone(day),version:plan.plan.version,index:0,set:0,log:[],until:0,draft:null};
+  return {planId:plan.id,day:structuredClone(day),version:plan.plan.version,index:0,set:0,log:[],draft:null};
 }
 function overview() {
   const selected = selectedPlan(state);
@@ -187,8 +187,6 @@ function replaceToday() {
 function active() {
   const a=state.active, e=a.day.exercises[a.index];
   const total=a.day.exercises.reduce((n,ex)=>n+ex.count,0);
-  const resting=a.until>Date.now() || a.restPaused>0;
-  const rest=resting?'<article class="rest"><div><small>Отдых</small><b id="remaining"></b></div>'+button(a.restPaused?'Продолжить':'Пауза','rest-toggle')+button('Пропустить','rest')+'</article>':'';
   const sessionPlan=catalog(state).find(p=>p.id===(a.planId??originalPlanId));
   const picker=sessionPlan?dayPicker(sessionPlan.plan.days,a.day.id,true):'';
   const progress=picker+'<div class="session-meta"><b>'+escape(a.day.name)+'</b><small>'+a.log.length+' / '+total+' подх.</small></div>'+
@@ -201,7 +199,7 @@ function active() {
     (e.note?'<p class="hint">'+escape(e.note)+'</p>':'')+
     '<details class="session-actions"><summary>Действия тренировки</summary><div class="actions">'+button('Заменить сегодня','replace')+button('Пропустить упражнение','skip')+button('Завершить','early')+'</div></details></div>'+
     '<form id="entry" class="dock"><div class="session-meta"><strong>'+escape(e.name)+'</strong><small>'+ (a.set+1)+'/'+e.count+'</small></div>'+
-    rest+(old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+'</button>':'')+
+    (old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+'</button>':'')+
     '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+', кг',weight,0,0.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
     button('Записать подход','save-set','primary')+'</form>';
 }
@@ -229,17 +227,6 @@ function render(){
   if(view.dataset.page===page)screen.scrollTop=scroll;
   view.dataset.page=page;
   if(action)view.querySelector('[data-action="'+CSS.escape(action)+'"]')?.focus({preventScroll:true});
-  tick();
-}
-function tick(){
-  const el=byId('remaining');
-  if(!el)return;
-  const sec=Math.max(0,Math.ceil((state.active.restPaused || state.active.until-Date.now())/1000));
-  el.textContent=Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
-  if(!sec && !el.closest('article').hidden){
-    el.closest('article').hidden=true;
-    byId('notice').textContent='Отдых завершён.';
-  }
 }
 function finish(next){
   if(next.active.log.length) next.history.push({...next.active,finished:Date.now()});
@@ -277,8 +264,6 @@ function recordSet() {
     const partner=e.pair && a.day.exercises.findIndex(other=>other.pair===e.pair && other.pairOrder!==e.pairOrder && logged(a,other)<other.count && !a.skipped.includes(other.id));
     if(Number.isInteger(partner) && partner>=0) selectExercise(a,partner);
     else if(a.set>=e.count) advance(a);
-    a.until=Date.now()+1000*e.restSeconds;
-    a.restPaused=0;
   });
   if(saved)showSaved('Подход записан: '+format(set,exercise));
 }
@@ -327,7 +312,7 @@ view.addEventListener('click',event=>{
     selectExercise(a,a.day.exercises.findIndex(ex=>ex.id===set.id));
     a.draft={weight:set.weight??'',reps:set.reps};
     (a.drafts??={})[set.id]=a.draft;
-    a.until=0;a.restPaused=0;a.undoable=false;
+    a.undoable=false;
   });
   if(action.startsWith('edit-')){editSets(Number(action.slice(5)));return;}
   if(action.startsWith('historyedit-')){
@@ -349,13 +334,7 @@ view.addEventListener('click',event=>{
     }
     selectExercise(a,index);
   });
-  if(action==='rest')return commit(s=>{s.active.until=0;s.active.restPaused=0;});
-  if(action==='rest-toggle')return commit(s=>{
-    const a=s.active;
-    if(a.restPaused){a.until=Date.now()+a.restPaused;a.restPaused=0;}
-    else{a.restPaused=Math.max(0,a.until-Date.now());a.until=0;}
-  });
-  if(action==='skip' && confirm('Пропустить оставшиеся подходы этого упражнения?'))return commit(s=>{const a=s.active; a.skipped=[...skipped(a),a.day.exercises[a.index].id]; advance(a); a.until=0;a.restPaused=0;});
+  if(action==='skip' && confirm('Пропустить оставшиеся подходы этого упражнения?'))return commit(s=>{const a=s.active; a.skipped=[...skipped(a),a.day.exercises[a.index].id]; advance(a); });
   if(action==='finish' || (action==='early' && confirm('Завершить тренировку и сохранить записанные подходы?'))){
     const count=state.active.log.length;
     if(commit(finish))showSaved(count?'Тренировка сохранена в журнале ('+count+' подх.)':'Тренировка завершена без подходов');
@@ -400,7 +379,6 @@ async function init(){
   }catch{if(!state.plan)throw Error();}
   render();
   for(const tab of ['train','plans','journal'])byId(tab).onclick=()=>{page=tab;render();};
-  setInterval(tick,500);
   if('serviceWorker' in navigator){
     try{await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;byId('offline').textContent='Готово к офлайн';}
     catch{byId('offline').textContent='Только онлайн';}
