@@ -1,6 +1,6 @@
 const prefix = 'vshape-' + new URL(self.registration.scope).pathname + '-';
-const name = prefix + '9';
-const assets = ['./','./index.html','./style.css','./app.js','./plans.js','./manifest.webmanifest','./plan.json','./barbell-192.png','./barbell-512.png'];
+const name = prefix + '10';
+const assets = ['./','./index.html','./style.css','./app.js','./plans.js','./manifest.webmanifest','./plan.json','./slate-barbell-192.png','./slate-barbell-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(name).then(cache => cache.addAll(assets.map(path => new Request(path, {cache: "reload"})))).then(()=>self.skipWaiting()));
 });

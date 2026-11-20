@@ -2,18 +2,19 @@
 /* Critique: Keep every training input above the tab bar and let the exercise list scroll independently. */
 :root {
   color-scheme: dark;
-  --color-bg: #101311;
-  --color-surface: #1B211D;
-  --color-raised: #252D26;
-  --color-selected: #2B3925;
-  --color-text: #F4F7EF;
-  --color-muted: #B8C4B7;
-  --color-control-border: #758175;
-  --color-divider: #39443A;
-  --color-accent: #CEFA76;
-  --color-accent-ink: #17210D;
-  --color-focus: #F1D285;
-  --color-success: #9EE6AE;
+  --color-bg: #1F2937;
+  --color-surface: #313742;
+  --color-raised: #37414F;
+  --color-selected: #293447;
+  --color-text: #F8FAFC;
+  --color-muted: #CBD5E1;
+  --color-control-border: #8495AA;
+  --color-divider: #465266;
+  --color-accent: #F97316;
+  --color-accent-light: #FB923C;
+  --color-accent-ink: #0F172A;
+  --color-focus: #FB923C;
+  --color-success: #22C55E;
   --color-danger: #FFAAA6;
   --color-scrim: rgb(0 0 0 / 72%);
   --font-ui: Roboto, system-ui, sans-serif;
@@ -94,9 +95,9 @@ button:active, summary:active { background: var(--color-selected); }
 button:disabled { background: var(--color-surface); color: var(--color-muted); border-color: var(--color-divider); cursor: not-allowed; }
 :where(button,input,select,summary,a):focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 nav button { border-color: transparent; background: transparent; color: var(--color-muted); padding-inline: 4px; }
-button[aria-pressed=true] { background: transparent; color: var(--color-accent); border-color: var(--color-accent); }
+button[aria-pressed=true] { background: transparent; color: var(--color-accent-light); border-color: var(--color-accent); }
 .primary { width: 100%; min-height: var(--hit); background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); }
-.primary:active { background: var(--color-success); color: var(--color-accent-ink); }
+.primary:active { background: var(--color-accent-light); color: var(--color-accent-ink); }
 h1, h2, p { margin: 0; }
 h1, h2 { text-wrap: balance; overflow-wrap: break-word; min-width: 0; }
 h1 { font-size: 1.75rem; line-height: 1.22; margin-bottom: 16px; }
