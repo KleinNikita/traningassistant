@@ -23,8 +23,9 @@ function plansView() {
   const cards=catalog(state).map(item=>{
     const custom=(state.customPlans || []).some(p=>p.id===item.id);
     const current=item.id===selected.id;
-    const days=item.plan.days.map(d=>'<li><b>'+escape(d.name)+'</b><small>'+d.exercises.map(e=>escape(e.name)).join(' · ')+'</small></li>').join('');
-    return '<article class="day"><small>'+(custom?'Мой план':'Готовый план')+(current?' · Выбран':'')+'</small><h2>'+escape(item.name)+'</h2><details><summary>Посмотреть программу</summary><ol>'+days+'</ol></details><div class="actions">'+
+    const days=item.plan.days.map(d=>'<li><b>'+escape(d.name)+'</b><small>'+d.exercises.map(e=>escape(e.name)).join(', ')+'</small></li>').join('');
+    const status=current?'Выбран':custom?'Мой план':'Готовый план';
+    return '<article class="day"><h2>'+escape(item.name)+'</h2><small>'+status+'</small><details><summary>Посмотреть программу</summary><ol>'+days+'</ol></details><div class="actions">'+
       (current?'':button('Выбрать','use:'+item.id))+(custom?button('Изменить','modify:'+item.id):'')+'</div></article>';
   });
   return '<h1>Планы</h1>'+button('Создать свой план','new-plan','primary')+cards.join('');
@@ -51,24 +52,31 @@ function exerciseFields(ex={}) {
   return box;
 }
 function dayFields(day, number) {
-  const box=document.createElement('section');
+  const box=document.createElement('details');
   box.className='builder-day';
   box.dataset.id=day?.id || crypto.randomUUID();
-  box.innerHTML='<label>Название дня<input required name="dayName" maxlength="80" value="'+escape(day?.name??('День '+number))+'"></label><div class="builder-exercises"></div><div class="actions"><button type="button" data-add>+ Упражнение</button><button type="button" data-remove>Убрать день</button></div>';
+  box.innerHTML='<summary>'+escape(day?.name??('День '+number))+'</summary><label>Название дня<input required name="dayName" maxlength="80" value="'+escape(day?.name??('День '+number))+'"></label><div class="builder-exercises"></div><div class="actions"><button type="button" data-add>+ Упражнение</button><button type="button" data-remove>Убрать день</button></div>';
+  box.querySelector('[name=dayName]').oninput=event=>{box.querySelector('summary').textContent=event.target.value || 'День '+number;};
   const exercises=box.querySelector('.builder-exercises');
   for(const ex of day?.exercises??[{}])exercises.append(exerciseFields(ex));
   box.querySelector('[data-add]').onclick=()=>{const row=exerciseFields();exercises.append(row);row.querySelector('input').focus();};
-  box.querySelector('[data-remove]').onclick=()=>{
+  box.querySelector('.actions [data-remove]').onclick=()=>{
     if(box.parentElement.children.length>1)box.remove();
     else box.querySelector('[name=dayName]').focus();
   };
   return box;
 }
 function openPlanEditor(existing) {
-  const dialog=showDialog(existing?'Изменить план':'Новый план','<form class="plan-builder"><label>Название плана<input required name="title" maxlength="80" placeholder="Моя программа" value="'+escape(existing?.name)+'"></label><div class="builder-days"></div><button type="button" data-day>+ День</button><button class="primary">Сохранить и выбрать</button></form>');
+  const dialog=showDialog(existing?'Изменить план':'Новый план','<form class="plan-builder"><label>Название плана<input required name="title" maxlength="80" placeholder="Моя программа" value="'+escape(existing?.name)+'"></label><div class="builder-days"></div><button type="button" data-day>+ День</button><div class="builder-save"><button class="primary">Сохранить и выбрать</button></div></form>');
   const form=dialog.querySelector('form'), days=form.querySelector('.builder-days');
   for(const day of existing?.plan.days??[null]) days.append(dayFields(day,days.children.length+1));
-  form.querySelector('[data-day]').onclick=()=>{const row=dayFields(null,days.children.length+1);days.append(row);row.querySelector('input').focus();};
+  days.firstElementChild.open=true;
+  form.addEventListener('invalid',event=>{const day=event.target.closest('.builder-day');if(day)day.open=true;},true);
+  form.querySelector('[data-day]').onclick=()=>{
+    for(const day of days.children)day.open=false;
+    const row=dayFields(null,days.children.length+1);
+    days.append(row);row.open=true;row.querySelector('[name=dayName]').focus();
+  };
   form.onsubmit=event=>{
     event.preventDefault();
     for(const input of form.querySelectorAll('input[required]'))input.value=input.value.trim();

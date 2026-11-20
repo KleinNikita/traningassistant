@@ -28,9 +28,15 @@ function previous(e,n) {
 }
 let previewDay = null;
 function dayPicker(days, id, activeSession=false) {
-  return '<section class="choose-day"><h2>Выбери тренировочный день</h2><div class="day-picker">'+days.map((d,i)=>
+  const buttons='<div class="day-picker">'+days.map((d,i)=>
     '<button data-action="'+(activeSession?'switchday-':'day-')+i+'" aria-pressed="'+(d.id===id)+'">'+escape(d.name)+'</button>'
-  ).join('')+'</div></section>';
+  ).join('')+'</div>';
+  const index=days.findIndex(day=>day.id===id);
+  if(days.length>3 || days.some(day=>day.name.length>16)){
+    const label=index<0?'Выбрать день':escape(days[index].name)+' <small>'+(index+1)+' из '+days.length+'</small>';
+    return '<details class="choose-day"><summary>'+label+'</summary>'+buttons+'</details>';
+  }
+  return '<section class="choose-day" aria-label="Тренировочный день">'+buttons+'</section>';
 }
 function workoutFor(s, plan, index) {
   const day=plan.plan.days[index];
@@ -44,23 +50,21 @@ function overview() {
   const nextIndex = (days.findIndex(d => d.id === state.history.at(-1)?.day.id) + 1) % days.length;
   const chosen = days.find(d=>d.id===previewDay) || days[nextIndex];
   const picker = dayPicker(days,chosen.id);
-  return '<h1>'+escape(selected.name)+'</h1>' + picker + [chosen].map((day, position) => {
+  return '<div class="screen"><h1>'+escape(selected.name)+'</h1>' + picker + [chosen].map(day => {
     const total = day.exercises.reduce((sum, e) => sum + e.count, 0);
     const items = day.exercises.map(e => '<li><b>' + escape(e.name) + '</b><small>' + escape(e.sets) + '</small></li>').join('');
-    const title = day===days[nextIndex] ? 'Следующая тренировка' : 'Выбранный день';
-    return `<article class="day ${position === 0 ? 'featured' : ''}">
-      <div class="day-head"><small>${title}</small><h2>${escape(day.name)}</h2><p>${total} подх. · ${day.exercises.length} упр.</p></div>
-      <details open><summary>Состав тренировки</summary><ol>${items}</ol></details>
-      ${button(((state.pausedDays||[]).some(a=>(a.planId??originalPlanId)===selected.id && a.day.id===day.id)?'Продолжить ':'Начать ') + day.name, 'start-' + days.indexOf(day), 'primary arrow')}
-    </article>`;
+    return `<article class="day">
+      <div class="day-head"><h2>${escape(day.name)}</h2><p>${day.exercises.length} упр. / ${total} подх.</p></div>
+      <ol class="prescription">${items}</ol></article></div>
+      <div class="dock">${button(((state.pausedDays||[]).some(a=>(a.planId??originalPlanId)===selected.id && a.day.id===day.id)?'Продолжить ':'Начать ') + day.name, 'start-' + days.indexOf(day), 'primary')}</div>`;
   }).join('');
 }
 function counter(id, label, value, min, step) {
   const numberStep = id === 'weight' ? 'any' : '1';
   return `<div class="counter"><label for="${id}">${escape(label)}</label>
-    <div class="stepper"><button type="button" data-adjust="-${step}" data-field="${id}" aria-label="Уменьшить · ${escape(label)}">−</button>
+    <div class="stepper"><button type="button" data-adjust="-${step}" data-field="${id}" aria-label="Уменьшить: ${escape(label)}">−</button>
     <input id="${id}" type="number" min="${min}" step="${numberStep}" inputmode="${id === 'weight' ? 'decimal' : 'numeric'}" ${id === 'reps' ? 'required' : ''} value="${escape(value)}">
-    <button type="button" data-adjust="${step}" data-field="${id}" aria-label="Увеличить · ${escape(label)}">+</button></div></div>`;
+    <button type="button" data-adjust="${step}" data-field="${id}" aria-label="Увеличить: ${escape(label)}">+</button></div></div>`;
 }
 function logged(a, e) {
   return a.log.filter(set => set.id === e.id).length;
@@ -93,9 +97,9 @@ function exerciseList(a) {
   const rows = a.day.exercises.map((e,i) => {
     const count = logged(a,e), done = count >= e.count;
     const current = i === a.index;
-    const status = done ? '✓' : skippedIds.includes(e.id) ? '↷' : String(i+1).padStart(2,'0');
+    const status = done ? 'Готово' : skippedIds.includes(e.id) ? 'Пропущено' : current ? 'Выбрано' : '';
     return `<div class="roster-line"><button class="exercise-row" data-action="${done ? 'edit' : 'pick'}-${i}" aria-pressed="${current}">
-      <span class="serial">${status}</span><span>${escape(e.name)}</span></button><button class="set-count" data-action="${count?'edit':'pick'}-${i}" aria-label="Подходы: ${escape(e.name)}">${count}/${e.count}</button></div>`;
+      <span>${escape(e.name)}</span>${status?'<small>'+status+'</small>':''}</button><button class="set-count" data-action="${count?'edit':'pick'}-${i}" aria-label="${escape(e.name)}, подходы: ${count} из ${e.count}">${count}/${e.count}</button></div>`;
   });
   return '<div class="roster" aria-label="Упражнения тренировки">'+rows.join('')+'</div>';
 }
@@ -103,11 +107,12 @@ function recent(a) {
   const set = a.log.at(-1);
   if (!set || !a.undoable) return '';
   const ex = a.day.exercises.find(e=>e.id===set.id);
-  return '<div class="receipt"><small>Записано: '+escape(ex.name)+' · '+escape(format(set,ex))+'</small>'+button('Отменить','undo')+'</div>';
+  return '<div class="receipt"><small>Записано: '+escape(ex.name)+' ('+escape(format(set,ex))+')</small>'+button('Отменить','undo')+'</div>';
 }
 function showDialog(title, html) {
   const dialog = document.createElement('dialog');
-  dialog.innerHTML = '<header><h2>'+escape(title)+'</h2><button aria-label="Закрыть">×</button></header>'+html;
+  dialog.setAttribute('aria-labelledby','dialog-title');
+  dialog.innerHTML = '<header><h2 id="dialog-title">'+escape(title)+'</h2><button type="button" aria-label="Закрыть">×</button></header>'+html;
   document.body.append(dialog);
   dialog.querySelector('header button').onclick=()=>dialog.close();
   dialog.addEventListener('close',()=>dialog.remove(),{once:true});
@@ -173,21 +178,23 @@ function replaceToday() {
 function active() {
   const a=state.active, e=a.day.exercises[a.index];
   const total=a.day.exercises.reduce((n,ex)=>n+ex.count,0);
-  const rest=a.until>Date.now()?'<article class="rest"><small>Отдых <b id="remaining"></b></small>'+button('Пропустить','rest')+'</article>':'';
+  const resting=a.until>Date.now() || a.restPaused>0;
+  const rest=resting?'<article class="rest"><div><small>Отдых</small><b id="remaining"></b></div>'+button(a.restPaused?'Продолжить':'Пауза','rest-toggle')+button('Пропустить','rest')+'</article>':'';
   const sessionPlan=catalog(state).find(p=>p.id===(a.planId??originalPlanId));
   const picker=sessionPlan?dayPicker(sessionPlan.plan.days,a.day.id,true):'';
   const progress=picker+'<div class="session-meta"><b>'+escape(a.day.name)+'</b><small>'+a.log.length+' / '+total+' подх.</small></div>'+
-    '<progress aria-label="Записанные подходы" value="'+a.log.length+'" max="'+total+'"></progress>'+rest;
-  if(!e)return progress+exerciseList(a)+recent(a)+'<h1>Готово</h1>'+button('Сохранить тренировку','finish','primary');
+    '<progress aria-label="Записанные подходы" value="'+a.log.length+'" max="'+total+'"></progress>';
+  if(!e)return '<div class="screen">'+progress+exerciseList(a)+recent(a)+'<h1>Готово</h1></div><div class="dock">'+button('Сохранить тренировку','finish','primary')+'</div>';
   const old=previous(e,a.set), last=a.log.filter(s=>s.id===e.id).at(-1);
   const reps=a.draft?.reps??last?.reps??old?.reps??Number(e.sets.match(/×\s*(\d+)/)?.[1]??1);
   const weight=a.draft?.weight??old?.weight??last?.weight??e.startWeight??'';
-  return progress+exerciseList(a)+recent(a)+'<div class="actions">'+button('Заменить сегодня','replace')+button('Пропустить упражнение','skip')+button('Завершить','early')+'</div>'+
-    '<p class="hint">'+escape(e.sets)+' · '+escape(e.note)+'</p>'+
+  return '<div class="screen">'+progress+exerciseList(a)+recent(a)+'<p class="hint">'+escape(e.sets)+'</p>'+
+    (e.note?'<p class="hint">'+escape(e.note)+'</p>':'')+
+    '<details class="session-actions"><summary>Действия тренировки</summary><div class="actions">'+button('Заменить сегодня','replace')+button('Пропустить упражнение','skip')+button('Завершить','early')+'</div></details></div>'+
     '<form id="entry" class="dock"><div class="session-meta"><strong>'+escape(e.name)+'</strong><small>'+ (a.set+1)+'/'+e.count+'</small></div>'+
-    (old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+' ↙</button>':'')+
-    '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+' · кг',weight,0,0.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
-    '<button class="primary">✓ Записать подход</button></form>';
+    rest+(old?'<button type="button" data-action="previous" class="previous">В прошлый раз: '+escape(format(old,e))+'</button>':'')+
+    '<div class="fields">'+(e.weightLabel?counter('weight',e.weightLabel+', кг',weight,0,0.5):'')+counter('reps',unit(e),reps,1,1)+'</div>'+
+    '<button class="primary">Записать подход</button></form>';
 }
 function history() {
   const sessions = [...state.history].reverse();
@@ -204,16 +211,26 @@ function history() {
 }
 
 function render(){
+  const scroll=view.querySelector('.screen')?.scrollTop??0;
+  const focus=document.activeElement;
+  const action=view.contains(focus)?focus.dataset.action:null;
   for(const tab of ['train','plans','journal']) byId(tab).setAttribute('aria-pressed',page===tab);
-  view.innerHTML=page==='plans'?plansView():page==='journal'?history():state.active?active():overview();
+  view.innerHTML=page==='plans'?'<div class="screen">'+plansView()+'</div>':page==='journal'?'<div class="screen">'+history()+'</div>':state.active?active():overview();
+  const screen=view.querySelector('.screen');
+  if(view.dataset.page===page)screen.scrollTop=scroll;
+  view.dataset.page=page;
+  if(action)view.querySelector('[data-action="'+CSS.escape(action)+'"]')?.focus({preventScroll:true});
   tick();
 }
 function tick(){
   const el=byId('remaining');
   if(!el)return;
-  const sec=Math.max(0,Math.ceil((state.active.until-Date.now())/1000));
+  const sec=Math.max(0,Math.ceil((state.active.restPaused || state.active.until-Date.now())/1000));
   el.textContent=Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
-  if(!sec)el.closest('article').hidden=true;
+  if(!sec && !el.closest('article').hidden){
+    el.closest('article').hidden=true;
+    byId('notice').textContent='Отдых завершён.';
+  }
 }
 function finish(next){
   if(next.active.log.length) next.history.push({...next.active,finished:Date.now()});
@@ -242,6 +259,7 @@ view.addEventListener('submit',event=>{
     if(Number.isInteger(partner) && partner>=0) selectExercise(a,partner);
     else if(a.set>=e.count) advance(a);
     a.until=Date.now()+1000*e.restSeconds;
+    a.restPaused=0;
   });
 });
 view.addEventListener('click',event=>{
@@ -288,7 +306,7 @@ view.addEventListener('click',event=>{
     selectExercise(a,a.day.exercises.findIndex(ex=>ex.id===set.id));
     a.draft={weight:set.weight??'',reps:set.reps};
     (a.drafts??={})[set.id]=a.draft;
-    a.until=0;a.undoable=false;
+    a.until=0;a.restPaused=0;a.undoable=false;
   });
   if(action.startsWith('edit-')){editSets(Number(action.slice(5)));return;}
   if(action.startsWith('historyedit-')){
@@ -310,8 +328,13 @@ view.addEventListener('click',event=>{
     }
     selectExercise(a,index);
   });
-  if(action==='rest')return commit(s=>{s.active.until=0;});
-  if(action==='skip' && confirm('Пропустить оставшиеся подходы этого упражнения?'))return commit(s=>{const a=s.active; a.skipped=[...skipped(a),a.day.exercises[a.index].id]; advance(a); a.until=0;});
+  if(action==='rest')return commit(s=>{s.active.until=0;s.active.restPaused=0;});
+  if(action==='rest-toggle')return commit(s=>{
+    const a=s.active;
+    if(a.restPaused){a.until=Date.now()+a.restPaused;a.restPaused=0;}
+    else{a.restPaused=Math.max(0,a.until-Date.now());a.until=0;}
+  });
+  if(action==='skip' && confirm('Пропустить оставшиеся подходы этого упражнения?'))return commit(s=>{const a=s.active; a.skipped=[...skipped(a),a.day.exercises[a.index].id]; advance(a); a.until=0;a.restPaused=0;});
   if(action==='finish' || (action==='early' && confirm('Завершить тренировку и сохранить записанные подходы?')))return commit(finish);
   if(action==='export'){
     const link=document.createElement('a');
